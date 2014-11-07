@@ -22,7 +22,7 @@ namespace RabbitBus
 		readonly Action<IErrorContext> _defaultErrorCallback;
 		readonly ISerializationStrategy _defaultSerializationStrategy;
 		readonly IMessagePublisher _messagePublisher;
-		readonly IDictionary _queueProperties;
+		readonly IDictionary<string, object> _queueProperties;
 		readonly string _routingKey;
 		readonly Stopwatch _stopwatch = new Stopwatch();
 		readonly SubscriptionType _subscriptionType;
@@ -33,11 +33,11 @@ namespace RabbitBus
 		bool _threadCancelled;
 
 		public Subscription(IConnection connection, IDeadLetterConfiguration defaultDeadLetterConfiguration,
-		                    ISerializationStrategy defaultSerializationStrategy, IConsumeInfo consumeInfo,
-		                    string routingKey,
-		                    Action<IMessageContext<TMessage>> callback, IDictionary queueProperties,
-		                    Action<IErrorContext> defaultErrorCallback, IMessagePublisher messagePublisher,
-		                    SubscriptionType subscriptionType, TimeSpan callbackTimeout)
+							ISerializationStrategy defaultSerializationStrategy, IConsumeInfo consumeInfo,
+							string routingKey,
+							Action<IMessageContext<TMessage>> callback, IDictionary<string, object> queueProperties,
+							Action<IErrorContext> defaultErrorCallback, IMessagePublisher messagePublisher,
+							SubscriptionType subscriptionType, TimeSpan callbackTimeout)
 		{
 			_connection = connection;
 			_defaultDeadLetterConfiguration = defaultDeadLetterConfiguration;
@@ -62,17 +62,17 @@ namespace RabbitBus
 				if (_consumeInfo.ExchangeName != string.Empty)
 				{
 					channel.ExchangeDeclare(_consumeInfo.ExchangeName, _consumeInfo.ExchangeType,
-					                        _consumeInfo.IsExchangeDurable,
-					                        _consumeInfo.IsExchangeAutoDelete, null);
+											_consumeInfo.IsExchangeDurable,
+											_consumeInfo.IsExchangeAutoDelete, null);
 				}
 
 
-				IDictionary queueDeclareArguments = null;
+				IDictionary<string, object> queueDeclareArguments = null;
 				queueDeclareArguments = AddDeadLetterArguments(queueDeclareArguments);
 				queueDeclareArguments = AddExpirationArguments(queueDeclareArguments);
 
 				channel.QueueDeclare(_consumeInfo.QueueName, _consumeInfo.IsQueueDurable, _consumeInfo.IsQueueExclusive,
-				                     _consumeInfo.IsQueueAutoDelete, queueDeclareArguments);
+									 _consumeInfo.IsQueueAutoDelete, queueDeclareArguments);
 
 				if (_consumeInfo.ExchangeName != string.Empty)
 				{
@@ -98,7 +98,7 @@ namespace RabbitBus
 			catch (Exception e)
 			{
 				Logger.Current.Write("An exception occurred starting the subscription: " + e.Message,
-				                     TraceEventType.Error);
+									 TraceEventType.Error);
 			}
 		}
 
@@ -116,7 +116,7 @@ namespace RabbitBus
 			Logger.Current.Write(log, TraceEventType.Information);
 			_threadCancelled = true;
 			if (_thread != null)
-				_thread.Join();
+				_thread.Join(TimeSpan.FromSeconds(3));
 			_threadCancelled = false;
 			_thread = null;
 		}
@@ -128,7 +128,7 @@ namespace RabbitBus
 			Start();
 		}
 
-		IDictionary AddExpirationArguments(IDictionary exchangeArguments)
+		IDictionary<string, object> AddExpirationArguments(IDictionary<string, object> exchangeArguments)
 		{
 			if (_consumeInfo.Expiration.HasValue)
 			{
@@ -142,9 +142,9 @@ namespace RabbitBus
 			return exchangeArguments;
 		}
 
-		IDictionary AddDeadLetterArguments(IDictionary exchangeArguments)
+		IDictionary<string, object> AddDeadLetterArguments(IDictionary<string, object> exchangeArguments)
 		{
-			IDictionary queueDeclareArgs = exchangeArguments;
+			IDictionary<string, object> queueDeclareArgs = exchangeArguments;
 
 			IDeadLetterConfiguration deadLetterConfig = _consumeInfo.DeadLetterConfiguration ?? _defaultDeadLetterConfiguration;
 
@@ -192,27 +192,27 @@ namespace RabbitBus
 
 				try
 				{
-					object eArgs = null;
-					_consumer.Queue.Dequeue(1000, out eArgs);
+					//object eArgs = null;
+					_consumer.Queue.Dequeue(1000, out eventArgs);
 
-					if (eArgs != null)
+					if (eventArgs != null)
 					{
-						eventArgs = (BasicDeliverEventArgs) eArgs;
+						//eventArgs = (BasicDeliverEventArgs) eArgs;
 						logger.Write(string.Format("Message received: {0} bytes", eventArgs.Body.Length), TraceEventType.Information);
 						ISerializationStrategy serializationStrategy = _consumeInfo.SerializationStrategy ??
-						                                               _defaultSerializationStrategy;
+																	   _defaultSerializationStrategy;
 						object message = serializationStrategy.Deserialize<TMessage>(eventArgs.Body);
 
 						var messageContext = new MessageContext<TMessage>( /*_deadLetterStrategy, */ (TMessage) message,
-						                                                                             _consumeInfo,
-						                                                                             channel,
-						                                                                             eventArgs.DeliveryTag,
-						                                                                             eventArgs.Redelivered,
-						                                                                             eventArgs.Exchange,
-						                                                                             eventArgs.RoutingKey,
-						                                                                             eventArgs.BasicProperties,
-						                                                                             eventArgs.Body,
-						                                                                             _messagePublisher);
+																									 _consumeInfo,
+																									 channel,
+																									 eventArgs.DeliveryTag,
+																									 eventArgs.Redelivered,
+																									 eventArgs.Exchange,
+																									 eventArgs.RoutingKey,
+																									 eventArgs.BasicProperties,
+																									 eventArgs.Body,
+																									 _messagePublisher);
 
 						_callback(messageContext);
 
@@ -243,7 +243,7 @@ namespace RabbitBus
 				catch (AlreadyClosedException e)
 				{
 					Logger.Current.Write(string.Format("An AlreadyClosedException occurred: {0} {1}", e.Message, e.StackTrace),
-					                     TraceEventType.Error);
+										 TraceEventType.Error);
 					InvokeErrorCallback(eventArgs, channel);
 					break;
 				}

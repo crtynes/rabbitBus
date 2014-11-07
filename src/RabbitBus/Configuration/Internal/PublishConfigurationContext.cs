@@ -1,5 +1,5 @@
 using System;
-using System.Collections;
+using System.Collections.Generic;
 using RabbitMQ.Client;
 
 namespace RabbitBus.Configuration.Internal
@@ -63,7 +63,7 @@ namespace RabbitBus.Configuration.Internal
 			return this;
 		}
 
-		public IPublishConfigurationContext WithDefaultHeaders(IDictionary headers)
+        public IPublishConfigurationContext WithDefaultHeaders(IDictionary<string, object> headers)
 		{
 			PublishInfo.DefaultHeaders = headers;
 			return this;

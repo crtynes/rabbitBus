@@ -24,6 +24,8 @@ namespace RabbitBus
 		ConnectionFactory _connectionFactory;
 		bool _disposed;
 		IMessagePublisher _messagePublisher;
+        List<string> _rabbitServers;
+        int _rabbitServerIndex = 0;
 
 		public Bus() : this(new ConfigurationModel())
 		{
@@ -115,29 +117,63 @@ namespace RabbitBus
 			Connect(amqpUri, TimeSpan.FromSeconds(30));
 		}
 
-		public void Connect(string amqpUri, TimeSpan timeout)
+        public void Connect(string amqpUri, TimeSpan timeout)
+        {
+            List<string> ary = new List<string>();
+            ary.Add(amqpUri);
+            Connect(ary, timeout);
+        }
+
+        public void Connect(List<string> amqpUriAry)
+        {
+            Connect(amqpUriAry, TimeSpan.FromSeconds(5));
+        }
+
+        //public void Connect(string amqpUri, TimeSpan timeout)
+        //{
+        //    var amqpTcpEndpoint = new AmqpTcpEndpoint(new Uri(amqpUri));
+
+        //    Logger.Current.Write(string.Format("Establishing connection to host:{0}, port:{1}",
+        //                                       amqpTcpEndpoint.HostName, amqpTcpEndpoint.Port), TraceEventType.Information);
+        //    _connectionFactory = new ConnectionFactory
+        //        {
+        //            Uri = amqpUri
+        //        };
+
+        //    _messagePublisher = new MessagePublisher(_connectionFactory.UserName,
+        //                                             _configurationModel.DefaultDeadLetterConfiguration,
+        //                                             _configurationModel.PublishRouteConfiguration,
+        //                                             _configurationModel.ConsumeRouteConfiguration,
+        //                                             _configurationModel.DefaultSerializationStrategy,
+        //                                             _configurationModel.ConnectionDownQueueStrategy);
+        //    InitializeConnection(_connectionFactory, timeout);
+        //    RegisterAutoSubscriptions(_configurationModel);
+        //}
+
+        public void Connect(List<string> amqpUriAry, TimeSpan timeout)
+        {
+            _rabbitServers = amqpUriAry;
+            string amqpUri = _rabbitServers[_rabbitServerIndex];
+
+            var amqpTcpEndpoint = new AmqpTcpEndpoint(new Uri(amqpUri));
+
+            Logger.Current.Write(string.Format("Establishing connection to host:{0}, port:{1}",
+                                               amqpTcpEndpoint.HostName, amqpTcpEndpoint.Port), TraceEventType.Information);
+            _connectionFactory = new ConnectionFactory();
+            _messagePublisher = new MessagePublisher(_connectionFactory.UserName,
+                                                     _configurationModel.DefaultDeadLetterConfiguration,
+                                                     _configurationModel.PublishRouteConfiguration,
+                                                     _configurationModel.ConsumeRouteConfiguration,
+                                                     _configurationModel.DefaultSerializationStrategy,
+                                                     _configurationModel.ConnectionDownQueueStrategy);
+            InitializeConnection(_rabbitServerIndex, _connectionFactory, timeout);
+            RegisterAutoSubscriptions(_configurationModel);
+        }
+
+        void InitializeConnection(int rabbitSrvIdx, ConnectionFactory connectionFactory, TimeSpan timeout)
 		{
-			var amqpTcpEndpoint = new AmqpTcpEndpoint(new Uri(amqpUri));
+            connectionFactory.Uri = _rabbitServers[rabbitSrvIdx];
 
-			Logger.Current.Write(string.Format("Establishing connection to host:{0}, port:{1}",
-			                                   amqpTcpEndpoint.HostName, amqpTcpEndpoint.Port), TraceEventType.Information);
-			_connectionFactory = new ConnectionFactory
-				{
-					Uri = amqpUri
-				};
-
-			_messagePublisher = new MessagePublisher(_connectionFactory.UserName,
-			                                         _configurationModel.DefaultDeadLetterConfiguration,
-			                                         _configurationModel.PublishRouteConfiguration,
-			                                         _configurationModel.ConsumeRouteConfiguration,
-			                                         _configurationModel.DefaultSerializationStrategy,
-			                                         _configurationModel.ConnectionDownQueueStrategy);
-			InitializeConnection(_connectionFactory, timeout);
-			RegisterAutoSubscriptions(_configurationModel);
-		}
-
-		void InitializeConnection(ConnectionFactory connectionFactory, TimeSpan timeout)
-		{
 			TimeSpan timeoutInterval = TimeSpan.FromSeconds(10);
 			IConnection connection = null;
 			var stopwatch = new Stopwatch();
@@ -154,7 +190,8 @@ namespace RabbitBus
 					// Closing/disposing channels on IConnection.ConnectionShutdown causes a deadlock, so
 					// the ISession.SessionShutdown event is used here to infer a connection shutdown. 
 					// ------------------------------------------------------------------------------------------
-					((ConnectionBase) connection).m_session0.SessionShutdown += UnexpectedConnectionShutdown;
+					//((ConnectionBase) connection).m_session0.SessionShutdown += UnexpectedConnectionShutdown;
+                    connection.ConnectionShutdown += UnexpectedConnectionShutdown;
 					connection.CallbackException += ConnectionCallbackException;
 					_messagePublisher.SetConnection(connection);
 
@@ -190,10 +227,11 @@ namespace RabbitBus
 			}
 		}
 
-		void UnexpectedConnectionShutdown(ISession session, ShutdownEventArgs reason)
+		void UnexpectedConnectionShutdown(IConnection connection, ShutdownEventArgs reason)
 		{
 			Logger.Current.Write("Connection was shut down.", TraceEventType.Information);
-			((ConnectionBase) _connection).m_session0.SessionShutdown -= UnexpectedConnectionShutdown;
+			//((ConnectionBase) _connection).m_session0.SessionShutdown -= UnexpectedConnectionShutdown;
+            connection.ConnectionShutdown -= UnexpectedConnectionShutdown;
 
 			lock (_connectionLock)
 			{
@@ -246,7 +284,9 @@ namespace RabbitBus
 					Logger.Current.Write(string.Format("Attempting reconnect with last known configuration in {0} seconds.",
 					                                   timeSpan.ToString("ss")), TraceEventType.Information);
 					TimeProvider.Current.Sleep(_configurationModel.ReconnectionInterval);
-					InitializeConnection(_connectionFactory, TimeSpan.MinValue);
+                    _rabbitServerIndex++;
+                    if (_rabbitServerIndex >= _rabbitServers.Count) _rabbitServerIndex = 0;
+                    InitializeConnection(_rabbitServerIndex, _connectionFactory, timeSpan);
 				}
 				catch (Exception)
 				{
@@ -270,7 +310,8 @@ namespace RabbitBus
 			{
 				if (_connection != null)
 				{
-					((ConnectionBase) _connection).m_session0.SessionShutdown -= UnexpectedConnectionShutdown;
+					//((ConnectionBase) _connection).m_session0.SessionShutdown -= UnexpectedConnectionShutdown;
+                    _connection.ConnectionShutdown -= UnexpectedConnectionShutdown;
 					if (_connection != null && _connection.IsOpen)
 					{
 						_connection.Close();

@@ -3,7 +3,7 @@ using System.Diagnostics;
 using RabbitBus.Configuration;
 using RabbitBus.Logging;
 using RabbitMQ.Client;
-using RabbitMQ.Client.Framing.v0_9_1;
+using RabbitMQ.Client.Framing.Impl;//.v0_9_1;
 
 namespace RabbitBus
 {
@@ -94,7 +94,7 @@ namespace RabbitBus
 			if (_basicProperties.ReplyTo != null)
 			{
 				PublicationAddress publicationAddress = PublicationAddress.Parse(_basicProperties.ReplyTo);
-				var replyProperties = new BasicProperties();
+                var replyProperties = _channel.CreateBasicProperties();// new BasicProperties();
 				replyProperties.CorrelationId = _basicProperties.CorrelationId;
 				_messagePublisher.PublishReply<TMessage, TReplyMessage>(publicationAddress, responseMessage, replyProperties);
 			}

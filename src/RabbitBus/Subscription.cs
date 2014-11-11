@@ -116,7 +116,7 @@ namespace RabbitBus
 			Logger.Current.Write(log, TraceEventType.Information);
 			_threadCancelled = true;
 			if (_thread != null)
-				_thread.Join(TimeSpan.FromSeconds(3));
+				_thread.Join(TimeSpan.FromSeconds(1));
 			_threadCancelled = false;
 			_thread = null;
 		}
